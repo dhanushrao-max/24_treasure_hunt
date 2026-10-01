@@ -74,18 +74,11 @@ def generate_world():
         # Find two safe floor positions near the chest for the guard.
         guard_candidates = []
 
-        for r in range(
-            max(0, cr.top),
-            min(ROWS, cr.bottom)
-        ):
-            for c in range(
-                max(0, cr.left),
-                min(COLS, cr.right)
-            ):
+        for r in range(max(0, cr.top), min(ROWS, cr.bottom)):
+            for c in range(max(0, cr.left), min(COLS, cr.right)):
                 if grid[r][c] == FLOOR:
                     guard_candidates.append((c, r))
 
-        # Prefer two positions on the same row.
         rows_with_positions = {}
 
         for c, r in guard_candidates:
@@ -101,7 +94,6 @@ def generate_world():
                 )
                 break
 
-        # Fallback: use two safe floor positions if needed.
         if guard_points is None and len(guard_candidates) >= 2:
             guard_points = (
                 guard_candidates[0],
@@ -187,6 +179,7 @@ class Guard:
         )
 
         self.position = self.point_a.copy()
+
         self.rect = pygame.Rect(
             int(self.position.x),
             int(self.position.y),
@@ -222,7 +215,6 @@ class Guard:
             border_radius=6
         )
 
-        # Draw simple eyes to distinguish the guard.
         pygame.draw.circle(
             screen,
             (255,255,255),
@@ -304,11 +296,9 @@ class GameEngine:
             COLS
         )
 
-        # Move the guard every frame.
         if self.guard:
             self.guard.update()
 
-            # Check whether the player touched the guard.
             if self.player.rect.colliderect(self.guard.rect):
                 self.player.rect.topleft = self.player_start
                 self.status = "Guard caught you! Back to start!"
@@ -331,6 +321,76 @@ class GameEngine:
             elif cell == CHEST and self.player.has_key:
                 self.won = True
                 self.status = "Treasure found!"
+
+    def draw_minimap(self):
+        # Mini-map dimensions.
+        map_tile = 8
+        map_width = COLS * map_tile
+        map_height = ROWS * map_tile
+
+        # Position the mini-map in the top-right corner.
+        map_x = WIDTH - map_width - 10
+        map_y = 10
+
+        # Draw a dark background behind the mini-map.
+        background = pygame.Rect(
+            map_x - 4,
+            map_y - 4,
+            map_width + 8,
+            map_height + 8
+        )
+
+        pygame.draw.rect(
+            self.screen,
+            (15,15,25),
+            background
+        )
+
+        # Draw the dungeon layout.
+        for r in range(ROWS):
+            for c in range(COLS):
+                cell = self.grid[r][c]
+
+                if cell == WALL:
+                    color = (45,40,55)
+                else:
+                    color = (190,180,160)
+
+                rect = pygame.Rect(
+                    map_x + c * map_tile,
+                    map_y + r * map_tile,
+                    map_tile,
+                    map_tile
+                )
+
+                pygame.draw.rect(
+                    self.screen,
+                    color,
+                    rect
+                )
+
+        # Calculate the player's current mini-map position.
+        player_col = self.player.rect.centerx // TILE
+        player_row = self.player.rect.centery // TILE
+
+        player_x = map_x + player_col * map_tile + map_tile // 2
+        player_y = map_y + player_row * map_tile + map_tile // 2
+
+        # Draw the player as a blue dot.
+        pygame.draw.circle(
+            self.screen,
+            (60,120,255),
+            (player_x, player_y),
+            3
+        )
+
+        # Draw a border around the mini-map.
+        pygame.draw.rect(
+            self.screen,
+            (230,230,230),
+            background,
+            1
+        )
 
     def draw(self):
         self.screen.fill((30,25,40))
@@ -393,6 +453,9 @@ class GameEngine:
             self.guard.draw(self.screen)
 
         self.player.draw(self.screen)
+
+        # Draw the mini-map after the game objects.
+        self.draw_minimap()
 
         hud = pygame.Rect(
             0,
