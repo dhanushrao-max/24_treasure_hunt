@@ -5,6 +5,7 @@ TILE = 40
 COLS, ROWS = 20, 15
 WALL, FLOOR, CHEST, KEY, TRAP = 0, 1, 2, 3, 4
 SPEED = 3
+GUARD_SPEED = 2
 
 def generate_world():
     grid = [[WALL]*COLS for _ in range(ROWS)]
@@ -21,6 +22,7 @@ def generate_world():
 
         if not overlap:
             rooms.append(room)
+
             for ry in range(y, y+h):
                 for rx in range(x, x+w):
                     grid[ry][rx] = FLOOR
@@ -39,6 +41,8 @@ def generate_world():
             grid[cy][bx] = FLOOR
             cy += 1 if by > cy else -1
 
+    guard_points = None
+
     if len(rooms) >= 2:
         cr, ck = rooms[-1], rooms[-2]
 
@@ -54,24 +58,59 @@ def generate_world():
         for r in range(ROWS):
             for c in range(COLS):
                 if grid[r][c] == FLOOR:
-                    # Keep the starting room safe.
                     if rooms[0].collidepoint(c, r):
                         continue
 
-                    # Do not place traps on the key or chest.
                     if (c, r) == key_pos or (c, r) == chest_pos:
                         continue
 
                     trap_candidates.append((c, r))
 
-        # Place up to 6 traps.
         trap_count = min(6, len(trap_candidates))
 
         for c, r in random.sample(trap_candidates, trap_count):
             grid[r][c] = TRAP
 
+        # Find two safe floor positions near the chest for the guard.
+        guard_candidates = []
+
+        for r in range(
+            max(0, cr.top),
+            min(ROWS, cr.bottom)
+        ):
+            for c in range(
+                max(0, cr.left),
+                min(COLS, cr.right)
+            ):
+                if grid[r][c] == FLOOR:
+                    guard_candidates.append((c, r))
+
+        # Prefer two positions on the same row.
+        rows_with_positions = {}
+
+        for c, r in guard_candidates:
+            rows_with_positions.setdefault(r, []).append(c)
+
+        for r, positions in rows_with_positions.items():
+            positions.sort()
+
+            if len(positions) >= 2:
+                guard_points = (
+                    (positions[0], r),
+                    (positions[-1], r)
+                )
+                break
+
+        # Fallback: use two safe floor positions if needed.
+        if guard_points is None and len(guard_candidates) >= 2:
+            guard_points = (
+                guard_candidates[0],
+                guard_candidates[-1]
+            )
+
     start = rooms[0] if rooms else None
-    return grid, start
+
+    return grid, start, guard_points
 
 
 COLORS = {
@@ -90,38 +129,38 @@ class Player:
         self.has_key = False
 
     def move(self, keys, grid, rows, cols):
-        dx=dy=0
+        dx = dy = 0
 
         if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-            dx=-SPEED
+            dx = -SPEED
 
         if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-            dx=SPEED
+            dx = SPEED
 
         if keys[pygame.K_UP] or keys[pygame.K_w]:
-            dy=-SPEED
+            dy = -SPEED
 
         if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-            dy=SPEED
+            dy = SPEED
 
-        self._try_move(dx,0,grid,rows,cols)
-        self._try_move(0,dy,grid,rows,cols)
+        self._try_move(dx, 0, grid, rows, cols)
+        self._try_move(0, dy, grid, rows, cols)
 
     def _try_move(self, dx, dy, grid, rows, cols):
-        new = self.rect.move(dx,dy)
+        new = self.rect.move(dx, dy)
 
-        for px,py in [
-            (new.left,new.top),
-            (new.right-1,new.top),
-            (new.left,new.bottom-1),
-            (new.right-1,new.bottom-1)
+        for px, py in [
+            (new.left, new.top),
+            (new.right-1, new.top),
+            (new.left, new.bottom-1),
+            (new.right-1, new.bottom-1)
         ]:
-            c,r=px//TILE,py//TILE
+            c, r = px//TILE, py//TILE
 
-            if not(0<=r<rows and 0<=c<cols) or grid[r][c]==WALL:
+            if not(0 <= r < rows and 0 <= c < cols) or grid[r][c] == WALL:
                 return
 
-        self.rect=new
+        self.rect = new
 
     def draw(self, screen):
         pygame.draw.ellipse(screen, self.color, self.rect)
@@ -133,6 +172,70 @@ class Player:
                 (self.rect.right-6, self.rect.top+6),
                 5
             )
+
+
+class Guard:
+    def __init__(self, point_a, point_b):
+        self.point_a = pygame.Vector2(
+            point_a[0] * TILE + 6,
+            point_a[1] * TILE + 6
+        )
+
+        self.point_b = pygame.Vector2(
+            point_b[0] * TILE + 6,
+            point_b[1] * TILE + 6
+        )
+
+        self.position = self.point_a.copy()
+        self.rect = pygame.Rect(
+            int(self.position.x),
+            int(self.position.y),
+            28,
+            28
+        )
+
+        self.direction = 1
+        self.speed = GUARD_SPEED
+        self.color = (190, 50, 50)
+
+    def update(self):
+        target = self.point_b if self.direction == 1 else self.point_a
+
+        direction = target - self.position
+
+        if direction.length() <= self.speed:
+            self.position = target.copy()
+            self.direction *= -1
+        else:
+            self.position += direction.normalize() * self.speed
+
+        self.rect.topleft = (
+            round(self.position.x),
+            round(self.position.y)
+        )
+
+    def draw(self, screen):
+        pygame.draw.rect(
+            screen,
+            self.color,
+            self.rect,
+            border_radius=6
+        )
+
+        # Draw simple eyes to distinguish the guard.
+        pygame.draw.circle(
+            screen,
+            (255,255,255),
+            (self.rect.left + 8, self.rect.top + 9),
+            3
+        )
+
+        pygame.draw.circle(
+            screen,
+            (255,255,255),
+            (self.rect.left + 20, self.rect.top + 9),
+            3
+        )
 
 
 WIDTH = COLS * TILE
@@ -155,7 +258,7 @@ class GameEngine:
         self.reset()
 
     def reset(self):
-        self.grid, start = generate_world()
+        self.grid, start, guard_points = generate_world()
 
         if start:
             sx = start.x * TILE + 6
@@ -166,6 +269,14 @@ class GameEngine:
         self.player_start = (sx, sy)
 
         self.player = Player(sx, sy)
+
+        self.guard = None
+
+        if guard_points:
+            self.guard = Guard(
+                guard_points[0],
+                guard_points[1]
+            )
 
         self.won = False
         self.status = "Find the KEY, then the CHEST!"
@@ -193,28 +304,32 @@ class GameEngine:
             COLS
         )
 
+        # Move the guard every frame.
+        if self.guard:
+            self.guard.update()
+
+            # Check whether the player touched the guard.
+            if self.player.rect.colliderect(self.guard.rect):
+                self.player.rect.topleft = self.player_start
+                self.status = "Guard caught you! Back to start!"
+
         pr = self.player.rect.centery // TILE
         pc = self.player.rect.centerx // TILE
 
-        if 0<=pr<ROWS and 0<=pc<COLS:
+        if 0 <= pr < ROWS and 0 <= pc < COLS:
             cell = self.grid[pr][pc]
 
             if cell == TRAP:
-                # Send player back to the starting position.
                 self.player.rect.topleft = self.player_start
-
                 self.status = "Trap! Back to start!"
 
             elif cell == KEY:
                 self.player.has_key = True
-
                 self.grid[pr][pc] = FLOOR
-
                 self.status = "Got the key! Find the CHEST!"
 
             elif cell == CHEST and self.player.has_key:
                 self.won = True
-
                 self.status = "Treasure found!"
 
     def draw(self):
@@ -258,7 +373,6 @@ class GameEngine:
                     )
 
                 elif cell == TRAP:
-                    # Draw an X to clearly identify the trap.
                     pygame.draw.line(
                         self.screen,
                         (255,220,220),
@@ -274,6 +388,9 @@ class GameEngine:
                         (c*TILE+10, r*TILE+30),
                         4
                     )
+
+        if self.guard:
+            self.guard.draw(self.screen)
 
         self.player.draw(self.screen)
 
@@ -302,7 +419,7 @@ class GameEngine:
         )
 
         if self.won:
-            ov=pygame.Surface(
+            ov = pygame.Surface(
                 (WIDTH,ROWS*TILE),
                 pygame.SRCALPHA
             )
@@ -314,13 +431,13 @@ class GameEngine:
                 (0,0)
             )
 
-            msg=self.big_font.render(
+            msg = self.big_font.render(
                 "TREASURE FOUND!",
                 True,
                 (220,180,30)
             )
 
-            sub=self.font.render(
+            sub = self.font.render(
                 "Press R to Play Again",
                 True,
                 (180,180,180)
@@ -345,15 +462,12 @@ class GameEngine:
         pygame.display.flip()
 
     def run(self):
-        running=True
+        running = True
 
         while running:
-            running=self.handle_events()
-
+            running = self.handle_events()
             self.update()
-
             self.draw()
-
             self.clock.tick(FPS)
 
         pygame.quit()
