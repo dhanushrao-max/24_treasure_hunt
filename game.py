@@ -323,16 +323,13 @@ class GameEngine:
                 self.status = "Treasure found!"
 
     def draw_minimap(self):
-        # Mini-map dimensions.
         map_tile = 8
         map_width = COLS * map_tile
         map_height = ROWS * map_tile
 
-        # Position the mini-map in the top-right corner.
         map_x = WIDTH - map_width - 10
         map_y = 10
 
-        # Draw a dark background behind the mini-map.
         background = pygame.Rect(
             map_x - 4,
             map_y - 4,
@@ -346,7 +343,6 @@ class GameEngine:
             background
         )
 
-        # Draw the dungeon layout.
         for r in range(ROWS):
             for c in range(COLS):
                 cell = self.grid[r][c]
@@ -369,14 +365,12 @@ class GameEngine:
                     rect
                 )
 
-        # Calculate the player's current mini-map position.
         player_col = self.player.rect.centerx // TILE
         player_row = self.player.rect.centery // TILE
 
         player_x = map_x + player_col * map_tile + map_tile // 2
         player_y = map_y + player_row * map_tile + map_tile // 2
 
-        # Draw the player as a blue dot.
         pygame.draw.circle(
             self.screen,
             (60,120,255),
@@ -384,13 +378,81 @@ class GameEngine:
             3
         )
 
-        # Draw a border around the mini-map.
         pygame.draw.rect(
             self.screen,
             (230,230,230),
             background,
             1
         )
+
+    def draw_inventory(self):
+        # Draw the inventory slot in the bottom-right of the HUD.
+        slot_size = 40
+
+        slot_x = WIDTH - slot_size - 10
+        slot_y = ROWS * TILE + 5
+
+        slot = pygame.Rect(
+            slot_x,
+            slot_y,
+            slot_size,
+            slot_size
+        )
+
+        # Empty inventory slot.
+        pygame.draw.rect(
+            self.screen,
+            (50,50,65),
+            slot
+        )
+
+        pygame.draw.rect(
+            self.screen,
+            (180,180,190),
+            slot,
+            2
+        )
+
+        # Show the key icon after key collection.
+        if self.player.has_key:
+            key_x = slot_x + 20
+            key_y = slot_y + 20
+
+            # Key head.
+            pygame.draw.circle(
+                self.screen,
+                (255,220,60),
+                (key_x - 5, key_y),
+                7
+            )
+
+            # Key hole.
+            pygame.draw.circle(
+                self.screen,
+                (50,50,65),
+                (key_x - 5, key_y),
+                3
+            )
+
+            # Key shaft.
+            pygame.draw.rect(
+                self.screen,
+                (255,220,60),
+                (key_x, key_y - 3, 14, 6)
+            )
+
+            # Key teeth.
+            pygame.draw.rect(
+                self.screen,
+                (255,220,60),
+                (key_x + 8, key_y + 2, 4, 6)
+            )
+
+            pygame.draw.rect(
+                self.screen,
+                (255,220,60),
+                (key_x + 14, key_y + 2, 4, 6)
+            )
 
     def draw(self):
         self.screen.fill((30,25,40))
@@ -454,9 +516,10 @@ class GameEngine:
 
         self.player.draw(self.screen)
 
-        # Draw the mini-map after the game objects.
+        # Draw the mini-map.
         self.draw_minimap()
 
+        # HUD background.
         hud = pygame.Rect(
             0,
             ROWS*TILE,
@@ -470,8 +533,9 @@ class GameEngine:
             hud
         )
 
+        # Status message.
         st = self.font.render(
-            self.status + "  |  R=Restart",
+            self.status,
             True,
             (200,200,200)
         )
@@ -480,6 +544,21 @@ class GameEngine:
             st,
             (8,ROWS*TILE+13)
         )
+
+        # Restart instruction.
+        restart_text = self.font.render(
+            "R=Restart",
+            True,
+            (150,150,160)
+        )
+
+        self.screen.blit(
+            restart_text,
+            (WIDTH - 150, ROWS*TILE + 13)
+        )
+
+        # Draw inventory slot last so it is clearly visible.
+        self.draw_inventory()
 
         if self.won:
             ov = pygame.Surface(
